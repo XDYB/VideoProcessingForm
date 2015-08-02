@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -11,10 +12,11 @@ using System.Windows.Forms;
 
 namespace VideoProcessingForm
 {
-    public partial class Form1 : Form
+    public partial class Form1 : DevComponents.DotNetBar.Metro.MetroForm
     {
         public int count;
         List<String> list = new List<String>();//用于存放文件的完整路径
+
         public Form1()
         {
             InitializeComponent();
@@ -29,8 +31,8 @@ namespace VideoProcessingForm
         /// </summary>
         private void setTip()
         {
-            bltCapture.SetBalloonCaption(tbxCapture,"提示");
-            bltCapture.SetBalloonText(tbxCapture,"请输入要抽取第几秒的缩略图");
+            bltCapture.SetBalloonCaption(timeEdit1, "提示");
+            bltCapture.SetBalloonText(timeEdit1, "请输入要抽取第几秒的缩略图");
         }
 
         /// <summary>
@@ -51,18 +53,18 @@ namespace VideoProcessingForm
                     if (ofd.ShowDialog() == System.Windows.Forms.DialogResult.OK)
                     {
                         txtBoxOpen.Text = Path.GetDirectoryName(ofd.FileName);
+                        listBox.Items.Clear();
+                        list.Clear();
+
+                        foreach (var file in ofd.FileNames)
+                        {
+                            listBox.Items.Add(file);
+                            list.Add(file);
+                        }
+
+                        count = ofd.FileNames.Length;
                     }
 
-                    listBox.Items.Clear();
-                    list.Clear();
-
-                    foreach (var file in ofd.FileNames)
-                    {
-                        listBox.Items.Add(file);
-                        list.Add(file);
-                    }
-
-                    count = ofd.FileNames.Length;
                 }
                 else
                 {
@@ -75,20 +77,20 @@ namespace VideoProcessingForm
                     if (fbd.ShowDialog() == System.Windows.Forms.DialogResult.OK)
                     {
                         txtBoxOpen.Text = fbd.SelectedPath;
+                        DirectoryInfo dir = new DirectoryInfo(txtBoxOpen.Text);
+                        FileInfo[] files = dir.GetFiles();
+                        listBox.Items.Clear();
+                        list.Clear();
+
+                        foreach (var file in files)
+                        {
+                            listBox.Items.Add(file);
+                            list.Add(txtBoxOpen.Text + "\\" + file);
+                        }
+
+                        count = files.Length;
                     }
 
-                    DirectoryInfo dir = new DirectoryInfo(txtBoxOpen.Text);
-                    FileInfo[] files = dir.GetFiles();
-                    listBox.Items.Clear();
-                    list.Clear();
-
-                    foreach (var file in files)
-                    {
-                        listBox.Items.Add(file);
-                        list.Add(txtBoxOpen.Text +"\\"+ file);
-                    }
-
-                    count = files.Length;
                 }
 
                 lbCount.Text = "(0/" + count + ")";//文件个数
@@ -116,14 +118,26 @@ namespace VideoProcessingForm
 
         private void btnStart_Click(object sender, EventArgs e)
         {
-
             string fileName = "";//文件名
-            string saveDir = "";//保存完整路径
-            string isCover = "";
+            string newDir = "";//新文件的完整路径
+            string isCover = "";//是否覆盖同名文件
+            string timeStr = "";//时间点
+            string typeStr = "";   //转换类型
+
+            if (timeEdit1.Text.Length == 7)
+            {
+                timeStr = "0" + timeEdit1.Text;
+            }
+            else 
+            {
+                timeStr = timeEdit1.Text;
+            }
 
             if (txtBoxSave.Text == "")
             {
-                MessageBox.Show("选择保存路径");
+                DevComponents.DotNetBar.MessageBoxEx.Show("选择保存路径","提示");
+                //MessageBox.Show("选择保存路径");
+                return;
             }
 
             if (ckbCover.Checked)
@@ -131,19 +145,50 @@ namespace VideoProcessingForm
                 isCover = "-y";
             }
 
-            foreach (var item in list)
+            //得到选中下拉的值
+            typeStr = comBoxChangeType.SelectedItem.ToString();
+
+            foreach (var oldDir in list)
             {
-                fileName = Path.GetFileName(item);
+                fileName = Path.GetFileName(oldDir);
                 string dir = txtBoxSave.Text.Split(new string[]{":\\"},StringSplitOptions.None)[1];
+
                 if (dir == "")
                 {
-                    saveDir = txtBoxSave.Text + fileName;
+                    newDir = txtBoxSave.Text + fileName + "." + typeStr;
                 }
                 else
                 {
-                    saveDir = txtBoxSave.Text + "\\" + fileName;
+                    newDir = txtBoxSave.Text + "\\" + fileName + "." + typeStr;
                 }
-                
+
+                lbCount.Text = "("+Convert.ToInt32(list.IndexOf(oldDir)+1)+"/" + count + ")";//正在处理第几个文件
+                ExcuteProcess("../../ffmpeg.exe", oldDir, newDir, timeStr, isCover);
+            }
+        }
+
+        /// <summary>
+        /// 调用FFmpeg
+        /// </summary>
+        /// <param name="exe">要调用的exe文件</param>
+        /// <param name="oldFile">源文件</param>
+        /// <param name="newFile">新文件</param>
+        /// <param name="time">要在第几秒抽取缩略图</param>
+        /// <param name="isCover">是否覆盖同名文件</param>
+        private void ExcuteProcess(string exe, string oldFile, string newFile, string time, string isCover)
+        {
+            using (var p = new Process())
+            {
+                p.StartInfo.FileName = exe;
+                p.StartInfo.Arguments = "-i \"" + oldFile + "\" " + isCover + " -ss " + time + " \"" +  newFile + "\"";
+                p.StartInfo.UseShellExecute = false;
+                p.StartInfo.CreateNoWindow = true;
+                p.StartInfo.RedirectStandardError = false;
+                p.StartInfo.RedirectStandardOutput = false;
+
+                p.Start();
+                p.WaitForExit();//这句会使界面卡住，无法拖动
+                p.Close();
             }
         }
     }
